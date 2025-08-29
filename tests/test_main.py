@@ -1,8 +1,17 @@
+from unittest.mock import MagicMock
+
 import pytest
 import requests
 import responses
 
-from securehst_webhook_notifier.main import notify_webhook, send_webhook_message
+from securehst_webhook_notifier.main import (
+    PREFECT_AVAILABLE,
+    create_state_hooks,
+    notify_webhook,
+    prefect_notify_webhook,
+    send_prefect_notification,
+    send_webhook_message,
+)
 
 
 @pytest.fixture
@@ -208,3 +217,232 @@ def test_notify_webhook_invalid_platform():
         @notify_webhook("https://example.com", "test", platform="invalid")
         def test_func():
             pass
+
+
+# Prefect Webhook Tests
+@responses.activate
+def test_send_prefect_notification_success(mock_webhook_url):
+    # Setup response
+    responses.add(responses.POST, mock_webhook_url, json={"success": True}, status=200)
+
+    # Test function
+    send_prefect_notification(mock_webhook_url, "Test message")
+
+    # Verify
+    assert len(responses.calls) == 1
+    assert responses.calls[0].request.body == b'{"text": "Test message"}'
+
+
+@responses.activate
+def test_send_prefect_notification_error_swallowed(mock_webhook_url, capsys):
+    # Setup response to fail
+    responses.add(responses.POST, mock_webhook_url, json={"error": "Internal server error"}, status=500)
+
+    # Test function - should not raise exception
+    send_prefect_notification(mock_webhook_url, "Test message")
+
+    # Verify error was logged but not raised
+    captured = capsys.readouterr()
+    assert "Failed to send Prefect webhook notification" in captured.out
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+def test_create_state_hooks():
+    # Test creating state hooks
+    hooks = create_state_hooks("http://example.com", "Test Flow", "user", True)
+
+    # Verify structure
+    assert "on_completion" in hooks
+    assert "on_failure" in hooks
+    assert "on_crashed" in hooks
+    assert "on_cancellation" in hooks
+
+    # Verify each hook contains a function
+    assert len(hooks["on_completion"]) == 1
+    assert callable(hooks["on_completion"][0])
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+@responses.activate
+def test_prefect_notify_webhook_basic(mock_webhook_url):
+    # Setup response for start notification
+    responses.add(responses.POST, mock_webhook_url, json={"success": True}, status=200)
+
+    # Create decorated function
+    @prefect_notify_webhook(mock_webhook_url, "Test Flow")
+    def sample_flow():
+        return "Flow executed"
+
+    # Execute function
+    result = sample_flow()
+
+    # Verify function result
+    assert result == "Flow executed"
+
+    # Verify start notification was sent
+    assert len(responses.calls) == 1
+    import json
+
+    start_data = json.loads(responses.calls[0].request.body.decode())
+    assert start_data["text"] == "🚀 Test Flow started"
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+@responses.activate
+def test_prefect_notify_webhook_custom_messages(mock_webhook_url):
+    # Setup response
+    responses.add(responses.POST, mock_webhook_url, json={"success": True}, status=200)
+
+    # Create decorated function with custom messages
+    @prefect_notify_webhook(
+        mock_webhook_url, "Custom Flow", start_message="Custom start message", success_message="Custom success message"
+    )
+    def custom_flow():
+        return "Done"
+
+    # Execute function
+    custom_flow()
+
+    # Verify custom start message was used
+    import json
+
+    start_data = json.loads(responses.calls[0].request.body.decode())
+    assert start_data["text"] == "Custom start message"
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+@responses.activate
+def test_state_hooks_completion(mock_webhook_url):
+    # Setup response
+    responses.add(responses.POST, mock_webhook_url, json={"success": True}, status=200)
+
+    # Create state hooks
+    hooks = create_state_hooks(mock_webhook_url, "Test Flow", "testuser", True)
+    completion_hook = hooks["on_completion"][0]
+
+    # Mock flow objects
+    mock_flow = MagicMock()
+    mock_flow_run = MagicMock()
+    mock_state = MagicMock()
+
+    # Call the completion handler
+    completion_hook(mock_flow, mock_flow_run, mock_state)
+
+    # Verify success message doesn't mention user (silent_success=True)
+    import json
+
+    success_data = json.loads(responses.calls[0].request.body.decode())
+    assert success_data["text"] == "✅ Test Flow completed successfully"
+    assert "@testuser" not in success_data["text"]
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+@responses.activate
+def test_state_hooks_non_silent_success(mock_webhook_url):
+    # Setup response
+    responses.add(responses.POST, mock_webhook_url, json={"success": True}, status=200)
+
+    # Create state hooks with silent_success=False
+    hooks = create_state_hooks(mock_webhook_url, "Test Flow", "testuser", False)
+    completion_hook = hooks["on_completion"][0]
+
+    # Mock flow objects
+    mock_flow = MagicMock()
+    mock_flow_run = MagicMock()
+    mock_state = MagicMock()
+
+    # Call the completion handler
+    completion_hook(mock_flow, mock_flow_run, mock_state)
+
+    # Verify success message mentions user (silent_success=False)
+    import json
+
+    success_data = json.loads(responses.calls[0].request.body.decode())
+    assert success_data["text"] == "@testuser ✅ Test Flow completed successfully"
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+@responses.activate
+def test_state_hooks_failure_notification(mock_webhook_url):
+    # Setup response
+    responses.add(responses.POST, mock_webhook_url, json={"success": True}, status=200)
+
+    # Create state hooks
+    hooks = create_state_hooks(mock_webhook_url, "Test Flow", "testuser", True)
+    failure_hook = hooks["on_failure"][0]
+
+    # Mock flow objects
+    mock_flow = MagicMock()
+    mock_flow_run = MagicMock()
+    mock_state = MagicMock()
+    mock_state.type = "FAILED"  # Mock StateType.FAILED
+
+    # Call the failure handler
+    failure_hook(mock_flow, mock_flow_run, mock_state)
+
+    # Verify failure message mentions user
+    import json
+
+    failure_data = json.loads(responses.calls[0].request.body.decode())
+    assert failure_data["text"] == "@testuser ❌ Test Flow failed"
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+@responses.activate
+def test_state_hooks_crashed_notification(mock_webhook_url):
+    from prefect.states import StateType
+
+    # Setup response
+    responses.add(responses.POST, mock_webhook_url, json={"success": True}, status=200)
+
+    # Create state hooks
+    hooks = create_state_hooks(mock_webhook_url, "Test Flow", "testuser", True)
+    failure_hook = hooks["on_crashed"][0]
+
+    # Mock flow objects
+    mock_flow = MagicMock()
+    mock_flow_run = MagicMock()
+    mock_state = MagicMock()
+    mock_state.type = StateType.CRASHED
+
+    # Call the crashed handler
+    failure_hook(mock_flow, mock_flow_run, mock_state)
+
+    # Verify crash message
+    import json
+
+    crash_data = json.loads(responses.calls[0].request.body.decode())
+    assert crash_data["text"] == "@testuser ❌ Test Flow crashed"
+
+
+@pytest.mark.skipif(PREFECT_AVAILABLE, reason="Prefect is available")
+def test_prefect_notify_webhook_prefect_not_available(mock_webhook_url):
+    # Test when Prefect is not available
+    with pytest.raises(ImportError, match="Prefect is required to use prefect_notify_webhook"):
+
+        @prefect_notify_webhook(mock_webhook_url, "Test Flow")
+        def test_flow():
+            pass
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+def test_prefect_notify_webhook_import_available():
+    # Test that we can import when Prefect is available
+    from securehst_webhook_notifier import prefect_notify_webhook
+
+    assert prefect_notify_webhook is not None
+
+
+@pytest.mark.skipif(not PREFECT_AVAILABLE, reason="Prefect not available")
+def test_prefect_notify_webhook_webhook_config_storage(mock_webhook_url):
+    # Test that webhook config is stored on wrapper function
+    @prefect_notify_webhook(mock_webhook_url, "Test Flow", user_id="testuser")
+    def test_flow():
+        return "Done"
+
+    # Verify webhook config is stored
+    assert hasattr(test_flow, "_webhook_config")
+    config = test_flow._webhook_config
+    assert config["display_name"] == "Test Flow"
+    assert config["user_id"] == "testuser"
+    assert config["webhook_url"] == mock_webhook_url
