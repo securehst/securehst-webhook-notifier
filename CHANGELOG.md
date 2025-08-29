@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0 (2025-08-29)
+
+### Features
+
+- Add prefect_notify_webhook decorator for prefect flow notifications ([`55379f5`](https://github.com/markm-io/securehst-webhook-notifier/commit/55379f5f29739b1fc71b4d855b8e965f536a6421))
+
 ## v0.1.1 (2025-04-29)
 
 ### Bug fixes
