@@ -62,7 +62,7 @@ def test_send_webhook_message_slack(mock_webhook_url):
 
 
 def test_send_webhook_message_invalid_platform(mock_webhook_url):
-    with pytest.raises(ValueError, match="Unsupported platform 'invalid' for webhook messaging."):
+    with pytest.raises(ValueError, match=r"Unsupported platform 'invalid' for webhook messaging."):
         send_webhook_message(mock_webhook_url, "Test message", "invalid")
 
 
@@ -212,7 +212,7 @@ def test_notify_webhook_with_user_mention(mock_webhook_url):
 
 
 def test_notify_webhook_invalid_platform():
-    with pytest.raises(ValueError, match="Unsupported platform 'invalid'"):
+    with pytest.raises(ValueError, match=r"Unsupported platform 'invalid'"):
 
         @notify_webhook("https://example.com", "test", platform="invalid")
         def test_func():
