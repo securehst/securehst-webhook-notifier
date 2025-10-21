@@ -15,7 +15,7 @@ from sphinx.ext import apidoc
 project = "SecureHST Webhook Notifier"
 copyright = "2025, Mark Moreno"
 author = "Mark Moreno"
-release = "0.2.0"
+release = "0.2.1"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

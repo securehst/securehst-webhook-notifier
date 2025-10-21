@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1 (2025-10-21)
+
+### Bug fixes
+
+- Use raw string notation for regex in valueerror assertions ([`9d9095b`](https://github.com/markm-io/securehst-webhook-notifier/commit/9d9095b7804533ca38376a65eaff936b9e7e72c3))
+
 ## v0.2.0 (2025-08-29)
 
 ### Features

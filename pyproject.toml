@@ -4,7 +4,7 @@ requires = [ "setuptools" ]
 
 [project]
 name = "securehst-webhook-notifier"
-version = "0.2.0"
+version = "0.2.1"
 description = "This package helps monitor automation processes with real-time updates directly in various platforms."
 readme = "README.md"
 license = { text = "MIT" }
