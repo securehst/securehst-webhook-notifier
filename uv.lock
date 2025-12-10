@@ -2352,7 +2352,7 @@ wheels = [
 
 [[package]]
 name = "securehst-webhook-notifier"
-version = "0.2.1"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "prefect" },
