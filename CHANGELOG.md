@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1 (2026-01-30)
+
+### Bug fixes
+
+- Update repository urls to new securehst organization ([`509a888`](https://github.com/securehst/securehst-webhook-notifier/commit/509a888bc4dbb7ecd9d6af0ee5c36bd8d818908a))
+
 ## v1.1.0 (2026-01-30)
 
 ### Bug fixes
