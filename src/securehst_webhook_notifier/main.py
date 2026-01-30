@@ -363,8 +363,10 @@ def prefect_notify_webhook(
                 )
                 return original_fn(*args, **kwargs)
 
-            # Update the flow with hooks and new function
-            return func.with_options(fn=wrapper_with_start_notification, **hooks)
+            # Replace the flow's underlying function directly
+            func.fn = wrapper_with_start_notification
+            # Apply hooks (without fn= parameter which is not supported)
+            return func.with_options(**hooks)
         else:
             # Function is not a flow yet, create a regular wrapper
             @wraps(func)
