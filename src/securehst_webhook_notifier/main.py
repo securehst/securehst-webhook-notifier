@@ -140,16 +140,22 @@ def send_webhook_message(webhook_url: str, message: str, platform: str) -> None:
         raise
 
 
-def send_prefect_notification(webhook_url: str, message: str) -> None:
+def send_prefect_notification(webhook_url: str, message: str, platform: str = "mattermost") -> None:
     """
     Send a notification to the webhook URL with error swallowing.
 
     Args:
         webhook_url (str): The destination webhook URL.
         message (str): The message content to send.
+        platform (str): Platform type for payload structure ("mattermost", "slack", "discord").
 
     """
-    payload = {"text": message}
+    platform = platform.lower()
+    if platform == "discord":
+        payload = {"content": message}
+    else:
+        payload = {"text": message}
+
     try:
         response = requests.post(webhook_url, json=payload, timeout=10)
         response.raise_for_status()
@@ -158,10 +164,23 @@ def send_prefect_notification(webhook_url: str, message: str) -> None:
         print(f"Failed to send Prefect webhook notification: {e}")
 
 
-def send_start_notification(webhook_url: str, display_name: str, start_message: str | None = None) -> None:
-    """Send flow start notification."""
-    message = start_message or f"🚀 {display_name} started"
-    send_prefect_notification(webhook_url, message)
+def send_start_notification(
+    webhook_url: str,
+    display_name: str,
+    start_time: datetime,
+    platform: str = "mattermost",
+    start_message: str | None = None,
+) -> None:
+    """Send flow start notification with timestamp."""
+    if start_message:
+        message = start_message
+    else:
+        message = (
+            f"⏳ Automation has started.\n"
+            f"Start Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Function Caller: {display_name}"
+        )
+    send_prefect_notification(webhook_url, message, platform)
 
 
 def create_state_hooks(
@@ -169,6 +188,8 @@ def create_state_hooks(
     display_name: str,
     user_id: str | None,
     silent_success: bool,
+    start_time_holder: dict,
+    platform: str = "mattermost",
     success_message: str | None = None,
     failure_message: str | None = None,
 ) -> dict:
@@ -177,12 +198,43 @@ def create_state_hooks(
         return {}
 
     def on_completion_hook(flow, flow_run, state):
-        message = success_message or f"✅ {display_name} completed successfully"
+        end_time = datetime.now()
+        start_time = start_time_holder.get("start_time", end_time)
+        duration = end_time - start_time
+
+        # Try to get result from state
+        result = None
+        try:
+            result = state.result(raise_on_failure=False) if hasattr(state, "result") else None
+        except Exception:
+            result = None
+        return_msg = f"\nReturn Message: {result}" if result else ""
+
+        if success_message:
+            message = success_message
+        else:
+            message = (
+                f"✅ Automation has completed successfully.\n"
+                f"Start Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"End Time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Duration: {duration}\n"
+                f"Function Caller: {display_name}"
+                f"{return_msg}"
+            )
+
         if not silent_success and user_id:
-            message = f"@{user_id} {message}"
-        send_prefect_notification(webhook_url, message)
+            if platform == "slack":
+                message = f"<@{user_id}>\n{message}"
+            else:
+                message = f"@{user_id}\n{message}"
+
+        send_prefect_notification(webhook_url, message, platform)
 
     def on_failure_hook(flow, flow_run, state):
+        end_time = datetime.now()
+        start_time = start_time_holder.get("start_time", end_time)
+        duration = end_time - start_time
+
         # Determine failure type based on state
         failure_type = "failed"
         if state.type == StateType.CRASHED:
@@ -192,9 +244,37 @@ def create_state_hooks(
         elif state.type == StateType.CANCELLING:
             failure_type = "is being cancelled"
 
-        base_message = failure_message or f"❌ {display_name} {failure_type}"
-        message = f"@{user_id} {base_message}" if user_id else base_message
-        send_prefect_notification(webhook_url, message)
+        # Extract error message from state
+        error_message = ""
+        if state.message:
+            error_message = str(state.message)
+            # Clean SQL errors
+            if "SQL: " in error_message:
+                error_message = re.sub(r"\[SQL: .*?\]", "", error_message).strip()
+
+        # Format user mention based on platform
+        user_mention = ""
+        if user_id:
+            if platform == "slack":
+                user_mention = f"<@{user_id}>\n"
+            else:
+                user_mention = f"@{user_id}\n"
+
+        if failure_message:
+            message = f"{user_mention}{failure_message}"
+        else:
+            message = (
+                f"{user_mention}"
+                f"🆘 Automation has {failure_type}.\n"
+                f"Start Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"End Time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Duration: {duration}\n"
+                f"Function Caller: {display_name}"
+            )
+            if error_message:
+                message += f"\nError: {error_message}"
+
+        send_prefect_notification(webhook_url, message, platform)
 
     return {
         "on_completion": [on_completion_hook],
@@ -209,6 +289,7 @@ def prefect_notify_webhook(
     display_name: str,
     user_id: str | None = None,
     silent_success: bool = True,
+    platform: str = "mattermost",
     start_message: str | None = None,
     success_message: str | None = None,
     failure_message: str | None = None,
@@ -224,11 +305,14 @@ def prefect_notify_webhook(
         display_name (str): Human readable name for the flow (e.g., "D. Miller & Associates - dmiller-etl").
         user_id (Optional[str], optional): User to mention on failures (e.g., "securehst"). Defaults to None.
         silent_success (bool, optional): If True, success notifications won't mention users. Defaults to True.
-        start_message (Optional[str], optional): Custom start message. Defaults to "🚀 {display_name} started".
+        platform (str, optional): Messaging platform type: "mattermost", "slack", or "discord".
+            Defaults to "mattermost".
+        start_message (Optional[str], optional): Custom start message.
+            Defaults to detailed message with start time.
         success_message (Optional[str], optional): Custom success message.
-            Defaults to "✅ {display_name} completed successfully".
+            Defaults to detailed message with timing info.
         failure_message (Optional[str], optional): Custom failure message.
-            Defaults to "❌ {display_name} {failure_type}".
+            Defaults to detailed message with timing and error info.
 
     Returns:
         Callable: A wrapped function with Prefect webhook notifications.
@@ -250,12 +334,22 @@ def prefect_notify_webhook(
     if not PREFECT_AVAILABLE:
         raise ImportError("Prefect is required to use prefect_notify_webhook. Install with: pip install prefect>=3.0.0")
 
+    # Shared dict to pass start time from wrapper to hooks
+    start_time_holder: dict = {}
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         # Check if the function is already a Prefect flow
         if hasattr(func, "with_options"):
             # Function is already a flow, add hooks to it
             hooks = create_state_hooks(
-                webhook_url, display_name, user_id, silent_success, success_message, failure_message
+                webhook_url,
+                display_name,
+                user_id,
+                silent_success,
+                start_time_holder,
+                platform,
+                success_message,
+                failure_message,
             )
 
             # Send start notification when flow starts
@@ -263,7 +357,10 @@ def prefect_notify_webhook(
 
             @wraps(original_fn)
             def wrapper_with_start_notification(*args: Any, **kwargs: Any) -> Any:
-                send_start_notification(webhook_url, display_name, start_message)
+                start_time_holder["start_time"] = datetime.now()
+                send_start_notification(
+                    webhook_url, display_name, start_time_holder["start_time"], platform, start_message
+                )
                 return original_fn(*args, **kwargs)
 
             # Update the flow with hooks and new function
@@ -272,7 +369,10 @@ def prefect_notify_webhook(
             # Function is not a flow yet, create a regular wrapper
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
-                send_start_notification(webhook_url, display_name, start_message)
+                start_time_holder["start_time"] = datetime.now()
+                send_start_notification(
+                    webhook_url, display_name, start_time_holder["start_time"], platform, start_message
+                )
                 return func(*args, **kwargs)
 
             # Store webhook config for when this becomes a flow
@@ -281,8 +381,10 @@ def prefect_notify_webhook(
                 "display_name": display_name,
                 "user_id": user_id,
                 "silent_success": silent_success,
+                "platform": platform,
                 "success_message": success_message,
                 "failure_message": failure_message,
+                "start_time_holder": start_time_holder,
             }
 
             return wrapper
