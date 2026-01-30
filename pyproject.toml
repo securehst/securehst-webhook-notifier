@@ -28,10 +28,10 @@ dependencies = [
     "requests>=2.32.3",
     "prefect>=2.0.0",
 ]
-urls."Bug Tracker" = "https://github.com/markm-io/securehst-webhook-notifier/issues"
-urls.Changelog = "https://github.com/markm-io/securehst-webhook-notifier/blob/main/CHANGELOG.md"
+urls."Bug Tracker" = "https://github.com/securehst/securehst-webhook-notifier/issues"
+urls.Changelog = "https://github.com/securehst/securehst-webhook-notifier/blob/main/CHANGELOG.md"
 urls.documentation = "https://securehst-webhook-notifier.readthedocs.io"
-urls.repository = "https://github.com/markm-io/securehst-webhook-notifier"
+urls.repository = "https://github.com/securehst/securehst-webhook-notifier"
 
 [dependency-groups]
 dev = [
