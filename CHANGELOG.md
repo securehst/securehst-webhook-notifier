@@ -1,12 +1,11 @@
 # Changelog
 
-## v1.1.1 (2026-01-30)
+## v1.1.0 (2026-01-30)
 
 ### Bug fixes
 
+- Separate release and deploy jobs for retry resilience ([`b0b32e7`](https://github.com/securehst/securehst-webhook-notifier/commit/b0b32e7819a0eb20c1ab08fc4e72cf0e5074400a))
 - Update pre-commit hooks to latest versions ([`dc348f8`](https://github.com/securehst/securehst-webhook-notifier/commit/dc348f8747a25a1582a9d827d941dd1682d75c3e))
-
-## v1.1.0 (2026-01-30)
 
 ### Features
 
