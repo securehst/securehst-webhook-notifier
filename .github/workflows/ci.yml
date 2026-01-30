@@ -8,7 +8,8 @@ on:
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+  # Don't cancel in-progress releases on main branch
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
   lint:
@@ -65,10 +66,10 @@ jobs:
 
     runs-on: ubuntu-latest
     environment: release
-    concurrency: release
+    concurrency:
+      group: release
+      cancel-in-progress: false
     permissions:
-      id-token: write
-      attestations: write
       contents: write
 
     steps:
@@ -97,19 +98,50 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        if: steps.release.outputs.released == 'true'
+        with:
+          name: distribution-artifacts
+          path: dist
+          if-no-files-found: error
+
+    outputs:
+      released: ${{ steps.release.outputs.released || 'false' }}
+      tag: ${{ steps.release.outputs.tag }}
+
+  # Separate deploy job so it can be retried independently without re-running release
+  deploy:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+
+    runs-on: ubuntu-latest
+    environment: release
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      attestations: write
+      contents: write
+
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: distribution-artifacts
+          path: dist
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v3
-        if: steps.release.outputs.released == 'true'
         with:
           subject-path: "dist/*"
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        if: steps.release.outputs.released == 'true'
 
       - name: Publish package distributions to GitHub Releases
         uses: python-semantic-release/publish-action@v10
-        if: steps.release.outputs.released == 'true'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release.outputs.tag }}
+          tag: ${{ needs.release.outputs.tag }}
