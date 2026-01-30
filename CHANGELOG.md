@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.3 (2026-01-30)
+
+### Bug fixes
+
+- Update flow function wrapping to directly replace underlying function and apply hooks ([`ebbff0c`](https://github.com/securehst/securehst-webhook-notifier/commit/ebbff0c2ff0536b2812cba414c27106fab1fed6d))
+
 ## v1.1.2 (2026-01-30)
 
 ### Bug fixes
