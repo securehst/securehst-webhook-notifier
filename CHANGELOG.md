@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1 (2026-01-30)
+
+### Bug fixes
+
+- Update pre-commit hooks to latest versions ([`dc348f8`](https://github.com/securehst/securehst-webhook-notifier/commit/dc348f8747a25a1582a9d827d941dd1682d75c3e))
+
 ## v1.1.0 (2026-01-30)
 
 ### Features
