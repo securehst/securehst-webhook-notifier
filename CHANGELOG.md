@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.2 (2026-01-30)
+
+### Bug fixes
+
+- Add checkout step to deploy job for semantic-release publish ([`5b91ec4`](https://github.com/securehst/securehst-webhook-notifier/commit/5b91ec4a45b423765fdc919dbea6b001c46479f4))
+
 ## v1.1.1 (2026-01-30)
 
 ### Bug fixes
