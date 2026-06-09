@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.4 (2026-06-09)
+
+### Bug fixes
+
+- Upgrade dependencies ([`303b722`](https://github.com/securehst/securehst-webhook-notifier/commit/303b7227763f18218ed06d91514d54693800c5e0))
+
 ## v1.1.3 (2026-01-30)
 
 ### Bug fixes
