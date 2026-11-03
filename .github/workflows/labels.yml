@@ -12,11 +12,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: 3.x
-      - name: Install labels
-        run: pip install labels
+
+      # This used to run the `labels` PyPI package, but that project was last
+      # released in 2020 and builds its model with `Label(**api_json)`, so it
+      # dies on every field GitHub adds to the labels API — currently
+      # `archived_at`. The gh CLI ships on the runner and keeps the same
+      # contract: .github/labels.toml is the source of truth, labels are
+      # created or updated to match it, and remote labels missing from it are
+      # deleted. (tomllib needs Python 3.11+, which the runner image provides.)
       - name: Sync config with Github
-        run: labels -u ${{ github.repository_owner }} -t ${{ secrets.GH_PAT }} sync -f .github/labels.toml
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          python3 -c 'import json, sys, tomllib; json.dump(list(tomllib.load(open(sys.argv[1], "rb")).values()), sys.stdout)' \
+            .github/labels.toml > "$RUNNER_TEMP/desired.json"
+
+          jq -r '.[] | [.name, .color, .description // ""] | @tsv' "$RUNNER_TEMP/desired.json" |
+            while IFS=$'\t' read -r name color description; do
+              gh label create "$name" --color "$color" --description "$description" --force
+            done
+
+          gh label list --limit 200 --json name --jq '.[].name' | sort > "$RUNNER_TEMP/remote.txt"
+          jq -r '.[].name' "$RUNNER_TEMP/desired.json" | sort > "$RUNNER_TEMP/desired.txt"
+
+          comm -23 "$RUNNER_TEMP/remote.txt" "$RUNNER_TEMP/desired.txt" |
+            while IFS= read -r name; do
+              gh label delete "$name" --yes
+            done
